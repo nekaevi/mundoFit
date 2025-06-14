@@ -20,12 +20,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ==================== MIDDLEWARES GLOBAIS ====================
-app.use(cors({
-  origin: '*',
+const corsOptions = {
+  origin: [
+    'http://localhost:8081',              // Frontend local
+    'https://seusite.com',                // Seu domínio em produção
+    'https://mundofit-production.up.railway.app'  // URL do backend
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
 
+app.use(cors(corsOptions));  // 👈 Configuração segura de CORS
+app.options('*', cors());    // 👈 Habilita preflight para todas as rotas
 app.use(express.json());
 
 // ==================== MONITORAMENTO DO SISTEMA ====================
