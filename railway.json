@@ -1,0 +1,12 @@
+{
+  "build": {
+    "builder": "nixpacks",
+    "config": {
+      "nodeVersion": "20"
+    }
+  },
+  "deploy": {
+    "startCommand": "node server.js",
+    "healthcheckPath": "/api/healthcheck"
+  }
+}
