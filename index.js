@@ -4,7 +4,8 @@ const cors = require('cors');
 const os = require('os');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const { db } = require('./utils/firebase'); // Importação modificada
+require('dotenv').config();
+const { db } = require('./utils/firebase');
 
 // ==================== IMPORTAÇÃO DE ROTAS ====================
 const alunoRoutes = require('./routes/alunoRoutes');
@@ -55,63 +56,32 @@ async function initializeSystem() {
   try {
     console.log('⚙ Iniciando inicialização do sistema...');
     
-    // Teste de conexão com Firebase
-    console.log('🔗 Testando conexão com Firestore...');
-    const testDoc = db.collection('system').doc('connection-test');
-    await testDoc.set({
-      timestamp: new Date().toISOString(),
-      status: 'testing',
-      message: 'Teste de conexão inicial'
-    });
+    // Conexão com Firebase
+    console.log('🔗 Conectando ao Firebase...');
+    await db.collection('system').doc('status').get();
     sistemaStatus.dbConnected = true;
-    console.log('✅ Conexão com Firestore estabelecida com sucesso');
+    console.log('✅ Conexão com Firebase estabelecida');
 
     // Inicialização do Modelo de ML
-    if (process.env.ENABLE_ML === 'true') {
-      console.log('🧠 Inicializando modelo de ML...');
-      try {
-        const { initialize } = require('./ml/recommender');
-        sistemaStatus.mlModelReady = await initialize();
-        sistemaStatus.lastTrainingAttempt = new Date().toISOString();
-        console.log('✅ Modelo de ML inicializado');
-      } catch (mlError) {
-        console.error('⚠️ Erro na inicialização do ML:', mlError);
-        sistemaStatus.mlModelReady = false;
-        sistemaStatus.lastError = {
-          message: mlError.message,
-          timestamp: new Date().toISOString()
-        };
-      }
-    } else {
-      console.log('⏩ Inicialização de ML desabilitada');
-    }
+    console.log('🧠 Inicializando modelo de ML...');
+    const { initialize } = require('./ml/recommender');
+    sistemaStatus.mlModelReady = await initialize();
+    sistemaStatus.lastTrainingAttempt = new Date().toISOString();
+    console.log('✅ Modelo de ML inicializado');
 
     // Iniciar servidor
     app.listen(PORT, () => {
       const ip = getLocalIPAddress();
       sistemaStatus.serverStarted = new Date().toISOString();
-      console.log(`🚀 Servidor rodando em http://${ip}:${PORT}`);
+      console.log(`Servidor rodando em http://${ip}:${PORT}`);
     });
 
   } catch (error) {
     console.error('💥 Erro crítico na inicialização:', error);
     sistemaStatus.lastError = {
       message: error.message,
-      stack: error.stack,
       timestamp: new Date().toISOString()
     };
-    
-    // Tentativa de registrar o erro no Firestore antes de sair
-    try {
-      await db.collection('system-errors').doc(new Date().toISOString()).set({
-        error: error.message,
-        stack: error.stack,
-        status: sistemaStatus
-      });
-    } catch (loggingError) {
-      console.error('Falha ao registrar erro:', loggingError);
-    }
-    
     process.exit(1);
   }
 }
@@ -145,121 +115,62 @@ app.post('/login', async (req, res) => {
   try {
     const { email, senha } = req.body;
 
-    // Verificação paralela otimizada
-    const [professorQuery, alunoQuery] = await Promise.all([
-      db.collection('professores')
-        .where('email_professor', '==', email)
-        .limit(1)
-        .get(),
-      db.collection('alunos')
-        .where('email_aluno', '==', email)
-        .limit(1)
-        .get()
+    // Verificação paralela de usuários
+    const [professoresSnapshot, alunosSnapshot] = await Promise.all([
+      db.collection('professores').get(),
+      db.collection('alunos').get()
     ]);
 
     // Verificação do Admin
     if (email === process.env.ADMIN_EMAIL && senha === process.env.ADMIN_SENHA) {
-      return res.json({ 
-        tipoUsuario: 'admin', 
-        sistemaStatus: {
-          ...sistemaStatus,
-          // Ocultar informações sensíveis
-          lastError: sistemaStatus.lastError ? { 
-            message: sistemaStatus.lastError.message,
-            timestamp: sistemaStatus.lastError.timestamp
-          } : null
-        } 
-      });
+      return res.json({ tipoUsuario: 'admin', sistemaStatus });
     }
 
     // Verificação de Professores
-    if (!professorQuery.empty) {
-      const professor = professorQuery.docs[0];
-      if (bcrypt.compareSync(senha, professor.data().cd_senha_pf)) {
-        return res.json({ 
-          tipoUsuario: 'professor', 
-          id: professor.id, 
-          nome: professor.data().nm_professor,
-          sistemaStatus: {
-            dbConnected: sistemaStatus.dbConnected,
-            serverStarted: sistemaStatus.serverStarted
-          }
-        });
-      }
+    const professor = professoresSnapshot.docs.find(doc => 
+      doc.data().email_professor === email && 
+      bcrypt.compareSync(senha, doc.data().cd_senha_pf)
+    );
+
+    if (professor) {
+      return res.json({ tipoUsuario: 'professor', id: professor.id, nome: professor.data().nm_professor, sistemaStatus });
     }
 
     // Verificação de Alunos
-    if (!alunoQuery.empty) {
-      const aluno = alunoQuery.docs[0];
-      if (bcrypt.compareSync(senha, aluno.data().cd_senha_al)) {
-        return res.json({ 
-          tipoUsuario: 'aluno', 
-          id: aluno.id, 
-          nome: aluno.data().nm_aluno,
-          sistemaStatus: {
-            dbConnected: sistemaStatus.dbConnected,
-            serverStarted: sistemaStatus.serverStarted
-          }
-        });
-      }
+    const aluno = alunosSnapshot.docs.find(doc => 
+      doc.data().email_aluno === email && 
+      bcrypt.compareSync(senha, doc.data().cd_senha_al)
+    );
+
+    if (aluno) {
+      return res.json({ tipoUsuario: 'aluno', id: aluno.id, nome: aluno.data().nm_aluno, sistemaStatus });
     }
 
-    res.status(401).json({ 
-      sucesso: false, 
-      mensagem: 'Credenciais inválidas',
-      sistemaStatus: {
-        dbConnected: sistemaStatus.dbConnected
-      }
-    });
+    res.status(401).json({ sucesso: false, mensagem: 'Credenciais inválidas' });
 
   } catch (error) {
     console.error('Erro no login:', error);
-    sistemaStatus.lastError = {
-      message: error.message,
-      timestamp: new Date().toISOString()
-    };
-    res.status(500).json({ 
-      sucesso: false, 
-      error: 'Erro interno no servidor',
-      sistemaStatus: {
-        dbConnected: sistemaStatus.dbConnected,
-        lastError: {
-          timestamp: sistemaStatus.lastError.timestamp
-        }
-      }
-    });
+    res.status(500).json({ sucesso: false, error: 'Erro interno no servidor' });
   }
 });
 
 // ==================== ROTAS DE STATUS ====================
 app.get('/health', (req, res) => {
   res.status(200).json({
-    status: sistemaStatus.dbConnected ? 'healthy' : 'degraded',
+    status: 'online',
     versao: '2.1.0',
     timestamp: new Date().toISOString(),
     sistema: 'MundoFit Backend',
-    recursos: ['Autenticação', 'Gestão de Alunos', 'Gestão de Professores', 'Gestão de Exercícios', 'Recomendação Inteligente'],
-    dbStatus: sistemaStatus.dbConnected ? 'connected' : 'disconnected',
-    mlStatus: sistemaStatus.mlModelReady ? 'ready' : 'not-ready'
+    recursos: ['Autenticação', 'Gestão de Alunos', 'Gestão de Professores', 'Gestão de Exercícios', 'Recomendação Inteligente']
   });
 });
 
 app.get('/system/status', (req, res) => {
   res.json({
-    status: {
-      ...sistemaStatus,
-      // Ocultar stack traces em produção
-      lastError: sistemaStatus.lastError ? {
-        message: sistemaStatus.lastError.message,
-        timestamp: sistemaStatus.lastError.timestamp
-      } : null
-    },
+    status: sistemaStatus,
     uptime: process.uptime(),
     memoryUsage: process.memoryUsage(),
-    environment: process.env.NODE_ENV || 'development',
-    firestore: {
-      status: sistemaStatus.dbConnected ? 'connected' : 'disconnected'
-    }
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -269,22 +180,17 @@ app.post('/alunos/recuperar-senha', async (req, res) => {
     const { email } = req.body;
     const emailLower = email.trim().toLowerCase();
 
-    const alunoQuery = await db
+    const alunoSnapshot = await db
       .collection('alunos')
       .where('email_aluno', '==', emailLower)
       .limit(1)
       .get();
 
-    if (alunoQuery.empty) {
-      return res.status(404).json({ 
-        mensagem: 'E-mail não encontrado',
-        sistemaStatus: {
-          dbConnected: sistemaStatus.dbConnected
-        }
-      });
+    if (alunoSnapshot.empty) {
+      return res.status(404).json({ mensagem: 'E-mail não encontrado' });
     }
 
-    const alunoDoc = alunoQuery.docs[0];
+    const alunoDoc = alunoSnapshot.docs[0];
     const alunoId = alunoDoc.id;
 
     const codigo = crypto.randomInt(100000, 999999).toString();
@@ -294,7 +200,6 @@ app.post('/alunos/recuperar-senha', async (req, res) => {
       codigo,
       validade: validade.toISOString(),
       alunoId,
-      used: false
     });
 
     console.log(`Código de recuperação para ${emailLower}: ${codigo}`);
@@ -302,25 +207,11 @@ app.post('/alunos/recuperar-senha', async (req, res) => {
     res.status(200).json({
       mensagem: 'Código de recuperação enviado para seu e-mail',
       alunoId,
-      sistemaStatus: {
-        dbConnected: sistemaStatus.dbConnected
-      }
+      codigo, // Remover em produção
     });
   } catch (error) {
     console.error('Erro ao recuperar senha:', error);
-    sistemaStatus.lastError = {
-      message: error.message,
-      timestamp: new Date().toISOString()
-    };
-    res.status(500).json({ 
-      error: 'Erro interno no servidor',
-      sistemaStatus: {
-        dbConnected: sistemaStatus.dbConnected,
-        lastError: {
-          timestamp: sistemaStatus.lastError.timestamp
-        }
-      }
-    });
+    res.status(500).json({ error: 'Erro interno no servidor' });
   }
 });
 
@@ -336,18 +227,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({
     sucesso: false,
     erro: "Falha interna no servidor",
-    sistemaStatus: {
-      dbConnected: sistemaStatus.dbConnected,
-      lastError: {
-        timestamp: sistemaStatus.lastError.timestamp,
-        message: process.env.NODE_ENV === 'development' ? 
-          sistemaStatus.lastError.message : undefined
-      }
-    }
+    detalhes: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 
 // ==================== INICIAR APLICAÇÃO ====================
 initializeSystem();
-
-module.exports = app; // Para testes
