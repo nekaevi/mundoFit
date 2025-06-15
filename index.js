@@ -19,36 +19,41 @@ const mlRoutes = require('./routes/mlRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ==================== MIDDLEWARES GLOBAIS ====================
-
-// ==================== CONFIGURAÇÃO CORRIGIDA DO CORS ====================
+// ==================== CONFIGURAÇÃO DE CORS SEGURA ====================
 const allowedOrigins = [
   'http://localhost:8081',
   'https://seusite.com',
   'https://mundofit-production.up.railway.app',
-  'https://edwa3uw-anonymous-8081.exp.direct'  // 👈 ADICIONE ESTA ORIGEM
+  'https://edwa3uw-anonymous-8081.exp.direct'
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Permite requisições sem origem (como mobile apps ou curl)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Acesso bloqueado por política de CORS'));
     }
   },
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   optionsSuccessStatus: 200
 };
 
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));  // 👈 Pré-flight para todas as rotas
+// ==================== MIDDLEWARES GLOBAIS ====================
+app.use(express.json()); // Para parsear application/json
+app.use(express.urlencoded({ extended: true })); // Para parsear form data
+app.use(cors(corsOptions)); // Configuração de CORS
+app.options('*', cors(corsOptions)); // Habilita preflight para todas as rotas
 
+// Middleware para verificar JSON
+app.use((req, res, next) => {
+  if (req.method === 'POST' && !req.is('application/json')) {
+    return res.status(415).json({ error: "Content-Type deve ser application/json" });
+  }
+  next();
+});
 
 // ==================== MONITORAMENTO DO SISTEMA ====================
 let sistemaStatus = {
@@ -59,20 +64,6 @@ let sistemaStatus = {
   nodeVersion: process.version,
   lastError: null
 };
-
-// Função auxiliar para obter o IP local
-function getLocalIPAddress() {
-  const interfaces = os.networkInterfaces();
-  for (const interfaceName of Object.values(interfaces)) {
-    for (const iface of interfaceName) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
-      }
-    }
-  }
-  return '127.0.0.1';
-}
-
 // ==================== INICIALIZAÇÃO ASSÍNCRONA ====================
 async function initializeSystem() {
   try {
@@ -255,3 +246,4 @@ app.use((err, req, res, next) => {
 
 // ==================== INICIAR APLICAÇÃO ====================
 initializeSystem();
+module.exports = app; // Para testes
