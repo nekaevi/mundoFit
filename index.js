@@ -20,21 +20,35 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ==================== MIDDLEWARES GLOBAIS ====================
+
+// ==================== CONFIGURAÇÃO CORRIGIDA DO CORS ====================
+const allowedOrigins = [
+  'http://localhost:8081',
+  'https://seusite.com',
+  'https://mundofit-production.up.railway.app',
+  'https://edwa3uw-anonymous-8081.exp.direct'  // 👈 ADICIONE ESTA ORIGEM
+];
+
 const corsOptions = {
-  origin: [
-    'http://localhost:8081',              // Frontend local
-    'https://seusite.com',                // Seu domínio em produção
-    'https://mundofit-production.up.railway.app'  // URL do backend
-  ],
+  origin: function (origin, callback) {
+    // Permite requisições sem origem (como mobile apps ou curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Acesso bloqueado por política de CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   optionsSuccessStatus: 200
 };
 
-app.use(cors(corsOptions));  // 👈 Configuração segura de CORS
-app.options('*', cors());    // 👈 Habilita preflight para todas as rotas
-app.use(express.json());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));  // 👈 Pré-flight para todas as rotas
+
 
 // ==================== MONITORAMENTO DO SISTEMA ====================
 let sistemaStatus = {
