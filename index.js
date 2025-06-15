@@ -64,6 +64,19 @@ let sistemaStatus = {
   nodeVersion: process.version,
   lastError: null
 };
+// Função auxiliar para obter o IP local
+function getLocalIPAddress() {
+  const interfaces = os.networkInterfaces();
+  for (const interfaceName of Object.values(interfaces)) {
+    for (const iface of interfaceName) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+}
+
 // ==================== INICIALIZAÇÃO ASSÍNCRONA ====================
 async function initializeSystem() {
   try {
