@@ -3,30 +3,53 @@
 Aplicativo mobile desenvolvido para facilitar o acompanhamento de treinos em academias. Com o *MundoFit*, instrutores podem visualizar seus alunos e adicionar treinos personalizados. Alunos, por sua vez, conseguem acompanhar seus treinos, marcar como concluídos e verificar seu desempenho com praticidade e clareza.
 
 ## 📱 Guia de como Rodar a aplicação
-Backend
+## Backend 
+
+1. Clone o repositório:
+```bash
 git clone https://github.com/nekaevi/mundoFit
 cd mundoFit
+```
 
-# Instale as dependências
+2.Instale as dependências:
+```bash
 npm install
+```
 
-# Configure as variáveis de ambiente (crie um .env baseado no .env.example)
+3. Configure as variáveis de ambiente:
+```bash
 cp .env.example .env
-# adicione o arquivo serviceAccountKey.js com suas credenciais do 
-firebase
+```
+Edit the `.env` file with your configuration.
 
+4.Adicione as credenciais do Firebase:
+- Create a `serviceAccountKey.js` file with your Firebase credentials
 
-# Inicie o servidor em desenvolvimento
+5. Rode o servidor:
+```bash
 npm run dev
+```
 
-Frontend
+## Frontend 
+
+1. Clone o repositório:
+```bash
 git clone https://github.com/illY0701/MundoFit_App
 cd MundoFit_App
-npm install
+```
 
-# Configure o arquivo firebaseConfig.js com suas credenciais
-# Inicie o app
+2. Instale as dependências:
+```bash
+npm install
+```
+
+3. Configure o Firebase:
+- Edit `firebaseConfig.js` with your Firebase credentials
+
+4. inicie o app:
+```bash
 expo start
+```
 
 ## 📱 Guia de como utilizar o aplicativo
 
